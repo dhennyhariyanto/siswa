@@ -11,8 +11,16 @@ const router = express.Router();
 // Multer config for face photo uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.resolve(process.env.FACE_PHOTO_PATH || './storage/photos');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const dir = process.env.VERCEL
+      ? '/tmp/photos'
+      : path.resolve(process.env.FACE_PHOTO_PATH || './storage/photos');
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+    } catch (err) {
+      console.warn('[Siswa] Warning: Could not create photos directory:', err.message);
+    }
     cb(null, dir);
   },
   filename: (req, file, cb) => {

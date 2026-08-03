@@ -9,8 +9,17 @@ const auth = require('../middleware/auth');
 const router = express.Router();
 
 // Multer for attendance selfie upload (temp)
-const uploadDir = path.resolve(process.env.UPLOAD_PATH || './storage/uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+const uploadDir = process.env.VERCEL
+  ? '/tmp/uploads'
+  : path.resolve(process.env.UPLOAD_PATH || './storage/uploads');
+
+try {
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+} catch (err) {
+  console.warn('[Absensi] Warning: Could not create upload directory:', err.message);
+}
 
 const upload = multer({
   dest: uploadDir,
