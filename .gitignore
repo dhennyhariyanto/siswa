@@ -1,0 +1,26 @@
+# Ignore modules
+node_modules/
+backend/node_modules/
+backend/.env
+backend/storage/uploads/
+backend/storage/photos/
+backend/storage/data_wajah.pkl
+backend/python/__pycache__/
+
+# Flutter
+.dart_tool/
+.packages
+build/
+.pub-cache/
+.pub/
+presensi_app/.dart_tool/
+presensi_app/build/
+presensi_app/.flutter-plugins
+presensi_app/.flutter-plugins-dependencies
+presensi_app/.fvm/
+
+# Environment files
+.env
+
+# MacOS
+.DS_Store
