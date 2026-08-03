@@ -1,8 +1,8 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
-const path = require('path');
 
 const authRoutes = require('./routes/auth');
 const sekolahRoutes = require('./routes/sekolah');
@@ -16,8 +16,12 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 const ensureDir = dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  } catch (e) {
+    // Vercel has read-only filesystem, skip directory creation
   }
 };
 
