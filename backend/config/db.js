@@ -24,6 +24,10 @@ dbPool.on('connect', () => {
   console.log('[DB] PostgreSQL connected');
 });
 
+dbPool.on('error', (err) => {
+  console.error('[DB Pool Error] Unexpected error on idle client:', err.message || err);
+});
+
 const pool = {
   async query(sqlString, params = []) {
     try {
