@@ -1,3 +1,3 @@
 class ApiConfig {
-  static const String baseUrl = 'https://siswa-ca4j2jow5-siswa.vercel.app/api';
+  static const String baseUrl = 'https://siswa-pofpjzhf9-siswa.vercel.app/api';
 }
