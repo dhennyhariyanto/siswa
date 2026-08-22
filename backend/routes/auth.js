@@ -21,7 +21,7 @@ router.post('/login', async (req, res) => {
       `SELECT 
         userid,
         username,
-        passwordhash,
+        password,
         role,
         sekolahid,
         guruid,
@@ -50,7 +50,7 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    const valid = await bcrypt.compare(password, user.passwordhash);
+    const valid = await bcrypt.compare(password, user.password);
 
     if (!valid) {
       return res.status(401).json({
