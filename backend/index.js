@@ -1,4 +1,4 @@
-// Trigger Vercel rebuild after package-lock sync - v1.0.1
+// Trigger Vercel rebuild fix login siswa/guru/ortu - v1.0.3
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const express = require('express');
@@ -9,6 +9,7 @@ const authRoutes = require('./routes/auth');
 const sekolahRoutes = require('./routes/sekolah');
 const guruRoutes = require('./routes/guru');
 const siswaRoutes = require('./routes/siswa');
+const ortuRoutes = require('./routes/ortu');
 const absensiRoutes = require('./routes/absensi');
 const notifikasiRoutes = require('./routes/notifikasi');
 const laporanRoutes = require('./routes/laporan');
@@ -49,6 +50,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/sekolah', sekolahRoutes);
 app.use('/api/guru', guruRoutes);
 app.use('/api/siswa', siswaRoutes);
+app.use('/api/ortu', ortuRoutes);
 app.use('/api/absensi', absensiRoutes);
 app.use('/api/notifikasi', notifikasiRoutes);
 app.use('/api/laporan', laporanRoutes);

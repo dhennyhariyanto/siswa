@@ -53,7 +53,7 @@ class ApiService {
       request.headers['Authorization'] = 'Bearer $token';
     }
     request.fields.addAll(fields);
-    request.files.add(await http.MultipartFile.fromPath('foto', image.path));
+    request.files.add(await http.MultipartFile.fromPath('photo', image.path));
     final response = await request.send();
     final body = await response.stream.bytesToString();
     return _decodeBody(response.statusCode, body);

@@ -26,6 +26,15 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
+function euclideanDistance(arr1, arr2) {
+  if (arr1.length !== arr2.length) return Infinity;
+  let sum = 0;
+  for (let i = 0; i < arr1.length; i++) {
+    sum += Math.pow(arr1[i] - arr2[i], 2);
+  }
+  return Math.sqrt(sum);
+}
+
 // ============================================
 // POST /api/absensi/checkin  — Face recognition check-in
 // Body: multipart form with 'photo' file
@@ -36,107 +45,152 @@ router.post('/checkin', auth(['siswa', 'guru']), upload.single('photo'), async (
       return res.status(400).json({ success: false, message: 'Foto selfie wajib dikirim' });
     }
 
-    const pythonPath = process.env.PYTHON_PATH || 'python';
-    const checkScript = path.resolve(process.env.FACE_CHECK_SCRIPT || './python/cek_wajah.py');
-    const cacheFile = path.resolve(process.env.FACE_CACHE_PATH || './storage/data_wajah.pkl');
-    const photoPath = path.resolve(req.file.path);
+    const { getFaceDescriptor } = require('../faceHelper');
+    const photoBuffer = fs.readFileSync(req.file.path);
+    const descriptor = await getFaceDescriptor(photoBuffer, req.file.mimetype);
 
-    execFile(pythonPath, [checkScript, photoPath, cacheFile], { timeout: 30000 }, async (error, stdout, stderr) => {
-      // Cleanup temp file
-      try { fs.unlinkSync(photoPath); } catch (e) {}
+    // Cleanup temp file
+    try { fs.unlinkSync(req.file.path); } catch (e) {}
 
-      if (error) {
-        return res.status(500).json({
-          success: false,
-          message: 'Face check error: ' + (stderr || error.message),
-        });
-      }
+    if (!descriptor) {
+      return res.status(400).json({
+        success: false,
+        message: 'Wajah tidak terdeteksi pada foto. Silakan pastikan pencahayaan cukup dan wajah terlihat jelas.',
+      });
+    }
 
-      let result;
+    const siswaid = req.user.role === 'siswa' ? req.user.siswaid : null;
+    const guruid = req.user.role === 'guru' ? req.user.guruid : null;
+
+    // Fetch registered faces for the logged-in user
+    let rows = [];
+    if (req.user.role === 'siswa') {
+      [rows] = await pool.query(
+        `SELECT descriptor FROM facedata WHERE siswaid = ? AND status = 'A'`,
+        [siswaid]
+      );
+    } else if (req.user.role === 'guru') {
+      [rows] = await pool.query(
+        `SELECT descriptor FROM facedata WHERE guruid = ? AND status = 'A'`,
+        [guruid]
+      );
+    }
+
+    if (rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Wajah Anda belum terdaftar di sistem. Silakan daftarkan wajah terlebih dahulu.',
+      });
+    }
+
+    let minDistance = Infinity;
+    for (const row of rows) {
+      if (!row.descriptor) continue;
       try {
-        result = JSON.parse(stdout.trim());
-      } catch (e) {
-        return res.status(500).json({ success: false, message: 'Invalid response from face check script' });
-      }
-
-      if (result.status !== 'success') {
-        return res.status(401).json({ success: false, message: result.message });
-      }
-
-      // Face matched! result.nik contains the label e.g. "siswa_5"
-      const label = result.nik;
-      // Extract siswaid from label
-      let siswaid = null;
-      let guruid = null;
-
-      if (label.startsWith('siswa_')) {
-        siswaid = parseInt(label.replace('siswa_', ''));
-      } else if (label.startsWith('guru_')) {
-        guruid = parseInt(label.replace('guru_', ''));
-      }
-
-      // Verify the face matches the logged-in user
-      if (req.user.role === 'siswa' && siswaid !== req.user.siswaid) {
-        return res.status(403).json({
-          success: false,
-          message: 'Wajah tidak sesuai dengan akun login Anda',
-        });
-      }
-      if (req.user.role === 'guru' && guruid !== req.user.guruid) {
-        return res.status(403).json({
-          success: false,
-          message: 'Wajah tidak sesuai dengan akun login Anda',
-        });
-      }
-
-      // Check if already checked in today
-      const today = new Date().toISOString().slice(0, 10);
-      const [existing] = await pool.query(
-        `SELECT presensiid, jammasuk, jampulang FROM transaksipresensi
-         WHERE siswaid <=> ? AND guruid <=> ? AND tanggal = ? LIMIT 1`,
-        [siswaid, guruid, today]
-      );
-
-      if (existing.length && existing[0].jammasuk) {
-        // Already checked in — maybe this is checkout
-        if (existing[0].jampulang) {
-          return res.status(400).json({ success: false, message: 'Anda sudah check-in dan check-out hari ini' });
+        const regDescriptor = JSON.parse(row.descriptor);
+        const dist = euclideanDistance(descriptor, regDescriptor);
+        if (dist < minDistance) {
+          minDistance = dist;
         }
-        // Do checkout
-        const now = new Date().toTimeString().slice(0, 8);
-        await pool.query(
-          `UPDATE transaksipresensi SET jampulang = ?, statuskeluar = 'hadir' WHERE presensiid = ?`,
-          [now, existing[0].presensiid]
-        );
-        return res.json({
-          success: true,
-          message: 'Check-out berhasil',
-          data: { type: 'checkout', time: now, distance: result.distance },
-        });
+      } catch (e) {
+        console.error('Error parsing face descriptor:', e);
       }
+    }
 
-      // Do check-in
-      const jamMasuk = new Date().toTimeString().slice(0, 8);
-      // Determine late status (example: > 07:15 = terlambat)
-      const statusmasuk = jamMasuk > '07:15:00' ? 'terlambat' : 'hadir';
+    const matchThreshold = 0.6; // standard threshold for face-api.js
+    if (minDistance > matchThreshold) {
+      return res.status(401).json({
+        success: false,
+        message: `Wajah tidak cocok dengan data terdaftar (distance: ${minDistance.toFixed(3)})`,
+      });
+    }
 
-      const [insertResult] = await pool.query(
-        `INSERT INTO transaksipresensi (sekolahid, siswaid, guruid, tanggal, jammasuk, statusmasuk, verifikasi, createdby)
-         VALUES (?, ?, ?, ?, ?, ?, 'face', ?)`,
-        [req.user.sekolahid, siswaid, guruid, today, jamMasuk, statusmasuk, req.user.username]
+    // Check if already checked in today
+    const today = new Date().toISOString().slice(0, 10);
+    const [existing] = await pool.query(
+      `SELECT presensiid, jammasuk, jampulang FROM transaksipresensi
+       WHERE siswaid <=> ? AND guruid <=> ? AND tanggal = ? LIMIT 1`,
+      [siswaid, guruid, today]
+    );
+
+    if (existing.length && existing[0].jammasuk) {
+      // Already checked in — maybe this is checkout
+      if (existing[0].jampulang) {
+        return res.status(400).json({ success: false, message: 'Anda sudah check-in dan check-out hari ini' });
+      }
+      // Do checkout
+      const now = new Date().toTimeString().slice(0, 8);
+      await pool.query(
+        `UPDATE transaksipresensi SET jampulang = ?, statuskeluar = 'hadir' WHERE presensiid = ?`,
+        [now, existing[0].presensiid]
       );
+
+      // Parent notification for checkout if it's a student
+      if (req.user.role === 'siswa') {
+        try {
+          const [ortuRows] = await pool.query('SELECT ortuid FROM masterortu WHERE siswaid = ?', [siswaid]);
+          const ortuid = ortuRows.length ? ortuRows[0].ortuid : null;
+          if (ortuid) {
+            const [siswaRow] = await pool.query('SELECT nama FROM mastersiswa WHERE siswaid = ?', [siswaid]);
+            const namasiswa = siswaRow[0]?.nama || 'Putra/Putri Anda';
+            await pool.query(
+              `INSERT INTO corenotifikasi (sekolahid, siswaid, ortuid, judul, pesan, tipe, isread, createdby)
+               VALUES (?, ?, ?, ?, ?, 'presensi', 0, 'system')`,
+              [req.user.sekolahid, siswaid, ortuid, 'Presensi Check-Out', `${namasiswa} telah melakukan check-out presensi pulang pada ${now}.`]
+            );
+          }
+        } catch (notifErr) {
+          console.error('[Notification Error] Failed to create checkout notification:', notifErr.message);
+        }
+      }
 
       return res.json({
         success: true,
-        message: `Check-in berhasil (${statusmasuk})`,
-        data: {
-          type: 'checkin',
-          presensiid: insertResult.insertId,
-          time: jamMasuk,
-          status: statusmasuk,
-          distance: result.distance,
-        },
+        message: 'Check-out berhasil',
+        data: { type: 'checkout', time: now, distance: minDistance },
       });
+    }
+
+    // Do check-in
+    const jamMasuk = new Date().toTimeString().slice(0, 8);
+    // Determine late status (example: > 07:15 = terlambat)
+    const statusmasuk = jamMasuk > '07:15:00' ? 'terlambat' : 'hadir';
+
+    const [insertResult] = await pool.query(
+      `INSERT INTO transaksipresensi (sekolahid, siswaid, guruid, tanggal, jammasuk, statusmasuk, verifikasi, createdby)
+       VALUES (?, ?, ?, ?, ?, ?, 'face', ?)`,
+      [req.user.sekolahid, siswaid, guruid, today, jamMasuk, statusmasuk, req.user.username]
+    );
+
+    // Parent notification for checkin if it's a student
+    if (req.user.role === 'siswa') {
+      try {
+        const [ortuRows] = await pool.query('SELECT ortuid FROM masterortu WHERE siswaid = ?', [siswaid]);
+        const ortuid = ortuRows.length ? ortuRows[0].ortuid : null;
+        if (ortuid) {
+          const [siswaRow] = await pool.query('SELECT nama FROM mastersiswa WHERE siswaid = ?', [siswaid]);
+          const namasiswa = siswaRow[0]?.nama || 'Putra/Putri Anda';
+          await pool.query(
+            `INSERT INTO corenotifikasi (sekolahid, siswaid, ortuid, judul, pesan, tipe, isread, createdby)
+             VALUES (?, ?, ?, ?, ?, 'presensi', 0, 'system')`,
+            [req.user.sekolahid, siswaid, ortuid, 'Presensi Check-In', `${namasiswa} telah melakukan check-in presensi masuk pada ${jamMasuk} dengan status ${statusmasuk}.`]
+          );
+        }
+      } catch (notifErr) {
+        console.error('[Notification Error] Failed to create checkin notification:', notifErr.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Check-in berhasil (${statusmasuk})`,
+      data: {
+        type: 'checkin',
+        presensiid: insertResult.insertId,
+        time: jamMasuk,
+        status: statusmasuk,
+        distance: minDistance,
+      },
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

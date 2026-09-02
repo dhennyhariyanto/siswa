@@ -1,4 +1,5 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
 const auth = require('../middleware/auth');
 
@@ -34,7 +35,7 @@ router.get('/:id', auth(), async (req, res) => {
 // Create guru (admin)
 router.post('/', auth(['admin']), async (req, res) => {
   try {
-    const { sekolahid, nip, nama, jeniskelamin, notelp, email } = req.body;
+    const { sekolahid, nip, nama, jeniskelamin, notelp, email, username, password } = req.body;
     if (!nama || !sekolahid) {
       return res.status(400).json({ success: false, message: 'Nama dan sekolahid wajib diisi' });
     }
@@ -43,10 +44,32 @@ router.post('/', auth(['admin']), async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, 'A', ?)`,
       [sekolahid, nip || null, nama, jeniskelamin || null, notelp || null, email || null, req.user.username]
     );
+
+    const guruid = result.insertId;
+
+    // Create user login if username is provided
+    if (username && password) {
+      const [existing] = await pool.query('SELECT userid FROM coreuser WHERE username = ? LIMIT 1', [username]);
+      if (existing.length) {
+        return res.status(201).json({
+          success: true,
+          message: 'Guru berhasil ditambahkan, namun username login sudah digunakan',
+          data: { guruid }
+        });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await pool.query(
+        `INSERT INTO coreuser (sekolahid, username, password, role, guruid, status, createdby)
+         VALUES (?, ?, ?, 'guru', ?, 'A', ?)`,
+        [sekolahid, username, hashedPassword, guruid, req.user.username]
+      );
+    }
+
     return res.status(201).json({
       success: true,
       message: 'Guru berhasil ditambahkan',
-      data: { guruid: result.insertId }
+      data: { guruid }
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -56,11 +79,47 @@ router.post('/', auth(['admin']), async (req, res) => {
 // Update guru
 router.put('/:id', auth(['admin']), async (req, res) => {
   try {
-    const { nip, nama, jeniskelamin, notelp, email, status } = req.body;
+    const { nip, nama, jeniskelamin, notelp, email, status, username, password } = req.body;
     await pool.query(
       `UPDATE masterguru SET nip=?, nama=?, jeniskelamin=?, notelp=?, email=?, status=? WHERE guruid=?`,
       [nip, nama, jeniskelamin, notelp, email, status || 'A', req.params.id]
     );
+
+    const guruid = req.params.id;
+
+    // Manage user login if username is provided
+    if (username) {
+      const [existingUser] = await pool.query('SELECT userid, username FROM coreuser WHERE guruid = ? LIMIT 1', [guruid]);
+      if (existingUser.length) {
+        // Update user
+        if (password) {
+          const hashedPassword = await bcrypt.hash(password, 10);
+          await pool.query(
+            `UPDATE coreuser SET username = ?, password = ?, status = ? WHERE guruid = ?`,
+            [username, hashedPassword, status || 'A', guruid]
+          );
+        } else {
+          await pool.query(
+            `UPDATE coreuser SET username = ?, status = ? WHERE guruid = ?`,
+            [username, status || 'A', guruid]
+          );
+        }
+      } else if (password) {
+        // Create user
+        const [usernameCheck] = await pool.query('SELECT userid FROM coreuser WHERE username = ? LIMIT 1', [username]);
+        if (!usernameCheck.length) {
+          const [guruRow] = await pool.query('SELECT sekolahid FROM masterguru WHERE guruid = ? LIMIT 1', [guruid]);
+          const sekolahid = guruRow[0]?.sekolahid || req.user.sekolahid;
+          const hashedPassword = await bcrypt.hash(password, 10);
+          await pool.query(
+            `INSERT INTO coreuser (sekolahid, username, password, role, guruid, status, createdby)
+             VALUES (?, ?, ?, 'guru', ?, 'A', ?)`,
+            [sekolahid, username, hashedPassword, guruid, req.user.username]
+          );
+        }
+      }
+    }
+
     return res.json({ success: true, message: 'Guru berhasil diupdate' });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

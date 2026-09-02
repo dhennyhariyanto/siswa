@@ -14,14 +14,20 @@ class AuthService {
       body: jsonEncode({'username': username, 'password': password}),
     );
     final data = jsonDecode(response.body);
-    if (response.statusCode == 200 && data['token'] != null) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', data['token']);
-      await prefs.setString('role', data['user']['role'] ?? '');
-      await prefs.setString('nama', data['user']['nama'] ?? '');
-      await prefs.setInt('userId', data['user']['id'] ?? 0);
-      if (data['user']['sekolah_id'] != null) {
-        await prefs.setInt('sekolahId', data['user']['sekolah_id']);
+    if (response.statusCode == 200 && data['data'] != null) {
+      final payload = data['data'];
+      if (payload['token'] != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', payload['token']);
+        if (payload['user'] != null) {
+          final user = payload['user'];
+          await prefs.setString('role', user['role'] ?? '');
+          await prefs.setString('nama', user['username'] ?? '');
+          await prefs.setInt('userId', user['userid'] ?? 0);
+          if (user['sekolahid'] != null) {
+            await prefs.setInt('sekolahId', user['sekolahid']);
+          }
+        }
       }
     }
     return data;
@@ -55,5 +61,17 @@ class AuthService {
   static Future<bool> isLoggedIn() async {
     final token = await getToken();
     return token != null && token.isNotEmpty;
+  }
+
+  static Future<Map<String, dynamic>?> getUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final role = prefs.getString('role');
+    if (role == null) return null;
+    return {
+      'role': role,
+      'nama': prefs.getString('nama'),
+      'id': prefs.getInt('userId'),
+      'sekolahid': prefs.getInt('sekolahId'),
+    };
   }
 }

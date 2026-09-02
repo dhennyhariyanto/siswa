@@ -48,4 +48,21 @@ router.post('/', auth(['admin']), async (req, res) => {
   }
 });
 
+// Update school (admin only)
+router.put('/:id', auth(['admin']), async (req, res) => {
+  try {
+    const { nama, alamat, notelp, status } = req.body;
+    if (!nama) {
+      return res.status(400).json({ success: false, message: 'Nama sekolah wajib diisi' });
+    }
+    await pool.query(
+      'UPDATE mastersekolah SET nama = ?, alamat = ?, notelp = ?, status = ? WHERE sekolahid = ?',
+      [nama, alamat || null, notelp || null, status || 'A', req.params.id]
+    );
+    return res.json({ success: true, message: 'Sekolah berhasil diupdate' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;
