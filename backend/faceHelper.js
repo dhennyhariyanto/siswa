@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const tf = require('@tensorflow/tfjs');
-const faceapi = require('@vladmandic/face-api');
+require('@tensorflow/tfjs-backend-wasm');
+const faceapi = require('@vladmandic/face-api/dist/face-api.node-wasm.js');
 const jpeg = require('jpeg-js');
 const { PNG } = require('pngjs');
 
@@ -9,8 +10,10 @@ let isInitialized = false;
 
 async function initFaceApi() {
   if (isInitialized) return;
-  // Initialize tfjs
+  await tf.setBackend('wasm');
   await tf.ready();
+  // ponytail: wasm->cpu fallback if wasm binary missing; switch to 'cpu' when Vercel OOM
+  if (tf.getBackend() !== 'wasm') console.warn('[FaceAPI] wasm backend not available, using', tf.getBackend());
   const modelsPath = path.join(__dirname, 'models');
 
   // Load face-api models
@@ -24,18 +27,32 @@ async function initFaceApi() {
 
 function bufferToTensor(buffer, mimeType) {
   let width, height, data;
-
-  if (mimeType === 'image/png') {
-    const png = PNG.sync.read(buffer);
-    width = png.width;
-    height = png.height;
-    data = png.data;
+  const mt = (mimeType || '').toLowerCase();
+  if (mt.includes('png')) {
+    try {
+      const png = PNG.sync.read(buffer);
+      width = png.width;
+      height = png.height;
+      data = png.data;
+    } catch {
+      const decoded = jpeg.decode(buffer, { useTolerantDecoding: true });
+      width = decoded.width;
+      height = decoded.height;
+      data = decoded.data;
+    }
   } else {
-    // Default to JPEG
-    const decoded = jpeg.decode(buffer, { useTrainedPostprocessing: true });
-    width = decoded.width;
-    height = decoded.height;
-    data = decoded.data;
+    try {
+      const decoded = jpeg.decode(buffer, { useTolerantDecoding: true });
+      width = decoded.width;
+      height = decoded.height;
+      data = decoded.data;
+    } catch {
+      // fallback png
+      const png = PNG.sync.read(buffer);
+      width = png.width;
+      height = png.height;
+      data = png.data;
+    }
   }
 
   const numChannels = 3;
