@@ -6,6 +6,7 @@ import 'siswa_list_screen.dart';
 import 'guru_list_screen.dart';
 import 'sekolah_list_screen.dart';
 import 'ortu_list_screen.dart';
+import 'notifikasi_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -108,6 +109,16 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF1565C0),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.notifications),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotifikasiScreen()),
+              );
+            },
+            tooltip: 'Notifikasi',
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,

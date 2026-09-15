@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../config/api_config.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -44,12 +45,75 @@ class _HistoryScreenState extends State<HistoryScreen> {
         return Colors.green;
       case 'terlambat':
         return Colors.orange;
+      case 'lebih awal':
+        return Colors.blue;
       case 'alpha':
       case 'tidak hadir':
         return Colors.red;
       default:
         return Colors.grey;
     }
+  }
+
+  void _showDetail(Map<String, dynamic> r) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final fotoMasuk = r['fotomasuk'];
+        final fotoKeluar = r['fotokeluar'];
+        return AlertDialog(
+          title: Text(
+            'Detail Presensi: ${r['tanggal']?.toString().substring(0, 10) ?? '-'}',
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Nama: ${r['namasiswa'] ?? '-'}'),
+                const SizedBox(height: 8),
+                Text(
+                  'Masuk: ${r['jammasuk'] ?? '-'} (${r['statusmasuk'] ?? '-'})',
+                ),
+                if (fotoMasuk != null) ...[
+                  const SizedBox(height: 8),
+                  Image.network(
+                    '${ApiConfig.baseUrl.replaceAll('/api', '')}$fotoMasuk',
+                    height: 150,
+                    fit: BoxFit.cover,
+                    errorBuilder: (c, e, s) => const Text(
+                      'Gagal muat foto',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Text(
+                  'Pulang: ${r['jampulang'] ?? '-'} (${r['statuskeluar'] ?? '-'})',
+                ),
+                if (fotoKeluar != null) ...[
+                  const SizedBox(height: 8),
+                  Image.network(
+                    '${ApiConfig.baseUrl.replaceAll('/api', '')}$fotoKeluar',
+                    height: 150,
+                    fit: BoxFit.cover,
+                    errorBuilder: (c, e, s) => const Text(
+                      'Gagal muat foto',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Tutup'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -81,6 +145,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   final jamPulang = r['jampulang']?.toString() ?? '-';
                   final status = r['statusmasuk']?.toString() ?? '-';
                   final namaSiswa = r['namasiswa']?.toString();
+                  final fotoMasuk = r['fotomasuk'];
 
                   return Card(
                     margin: const EdgeInsets.symmetric(
@@ -88,21 +153,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       vertical: 4,
                     ),
                     child: ListTile(
+                      onTap: () => _showDetail(r),
                       leading: CircleAvatar(
-                        backgroundColor: _statusColor(status),
-                        child: Text(
-                          status.isNotEmpty ? status[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        backgroundColor: _statusColor(
+                          status,
+                        ).withValues(alpha: 0.2),
+                        backgroundImage: fotoMasuk != null
+                            ? NetworkImage(
+                                '${ApiConfig.baseUrl.replaceAll('/api', '')}$fotoMasuk',
+                              )
+                            : null,
+                        child: fotoMasuk == null
+                            ? Text(
+                                status.isNotEmpty
+                                    ? status[0].toUpperCase()
+                                    : '?',
+                                style: TextStyle(
+                                  color: _statusColor(status),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              )
+                            : null,
                       ),
                       title: Text(
                         namaSiswa != null ? '$tanggal  •  $namaSiswa' : tanggal,
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      subtitle: Text('Masuk: $jamMasuk  •  Pulang: $jamPulang'),
+                      subtitle: Text('In: $jamMasuk • Out: $jamPulang'),
                       trailing: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -117,7 +194,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           style: TextStyle(
                             color: _statusColor(status),
                             fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                            fontSize: 10,
                           ),
                         ),
                       ),

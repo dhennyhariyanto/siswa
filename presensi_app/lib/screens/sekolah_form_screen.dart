@@ -14,6 +14,8 @@ class _SekolahFormScreenState extends State<SekolahFormScreen> {
   final _namaController = TextEditingController();
   final _alamatController = TextEditingController();
   final _notelpController = TextEditingController();
+  final _jamMasukController = TextEditingController();
+  final _jamPulangController = TextEditingController();
   bool _isLoading = false;
 
   @override
@@ -23,6 +25,11 @@ class _SekolahFormScreenState extends State<SekolahFormScreen> {
       _namaController.text = widget.sekolah!['nama'] ?? '';
       _alamatController.text = widget.sekolah!['alamat'] ?? '';
       _notelpController.text = widget.sekolah!['notelp'] ?? '';
+      _jamMasukController.text = widget.sekolah!['jam_masuk'] ?? '07:00:00';
+      _jamPulangController.text = widget.sekolah!['jam_pulang'] ?? '15:00:00';
+    } else {
+      _jamMasukController.text = '07:00:00';
+      _jamPulangController.text = '15:00:00';
     }
   }
 
@@ -31,6 +38,8 @@ class _SekolahFormScreenState extends State<SekolahFormScreen> {
     _namaController.dispose();
     _alamatController.dispose();
     _notelpController.dispose();
+    _jamMasukController.dispose();
+    _jamPulangController.dispose();
     super.dispose();
   }
 
@@ -42,6 +51,8 @@ class _SekolahFormScreenState extends State<SekolahFormScreen> {
       'nama': _namaController.text,
       'alamat': _alamatController.text,
       'notelp': _notelpController.text,
+      'jam_masuk': _jamMasukController.text,
+      'jam_pulang': _jamPulangController.text,
     };
 
     try {
@@ -106,6 +117,24 @@ class _SekolahFormScreenState extends State<SekolahFormScreen> {
                       controller: _notelpController,
                       decoration: const InputDecoration(labelText: 'No. Telp'),
                       keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _jamMasukController,
+                      decoration: const InputDecoration(
+                        labelText: 'Jam Masuk (HH:MM:SS)',
+                      ),
+                      validator: (value) =>
+                          value == null || value.isEmpty ? 'Wajib diisi' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _jamPulangController,
+                      decoration: const InputDecoration(
+                        labelText: 'Jam Pulang (HH:MM:SS)',
+                      ),
+                      validator: (value) =>
+                          value == null || value.isEmpty ? 'Wajib diisi' : null,
                     ),
                     const SizedBox(height: 32),
                     ElevatedButton(

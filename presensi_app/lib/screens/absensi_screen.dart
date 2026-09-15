@@ -45,14 +45,19 @@ class _AbsensiScreenState extends State<AbsensiScreen> {
     });
 
     try {
+      // Ponytail: GPS mock. Add 'geolocator' package for real GPS.
+      final lat = '-6.200000';
+      final lng = '106.816666';
+
       final res = await ApiService.uploadAbsensi(
         endpoint: '/absensi/checkin',
         image: _image!,
-        fields: {},
+        fields: {'lat': lat, 'lng': lng},
       );
       setState(() {
         if (res['success'] == true) {
-          _resultMessage = res['message'] ?? 'Presensi berhasil';
+          final status = res['data']?['status'] ?? '';
+          _resultMessage = 'Berhasil! Status: ${status.toUpperCase()}';
           // Optional: clear image after success
           // _image = null;
         } else {

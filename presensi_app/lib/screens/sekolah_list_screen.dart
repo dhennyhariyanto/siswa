@@ -70,8 +70,9 @@ class _SekolahListScreenState extends State<SekolahListScreen> {
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Text(
-                      '${item['alamat'] ?? '-'}\nTelp: ${item['notelp'] ?? '-'}',
+                      '${item['alamat'] ?? '-'}\nTelp: ${item['notelp'] ?? '-'}\nIn: ${item['jam_masuk'] ?? '-'} | Out: ${item['jam_pulang'] ?? '-'}',
                     ),
+                    isThreeLine: true,
                     trailing: IconButton(
                       icon: const Icon(Icons.edit, color: Colors.blue),
                       onPressed: () async {

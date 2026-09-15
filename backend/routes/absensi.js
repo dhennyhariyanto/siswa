@@ -8,17 +8,20 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-// Multer for attendance selfie upload (temp)
+// Multer for attendance selfie upload
 const uploadDir = process.env.VERCEL
   ? '/tmp/uploads'
   : path.resolve(process.env.UPLOAD_PATH || './storage/uploads');
 
+const attendanceDir = process.env.VERCEL
+  ? '/tmp/attendance'
+  : path.resolve('./storage/attendance');
+
 try {
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-  }
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  if (!fs.existsSync(attendanceDir)) fs.mkdirSync(attendanceDir, { recursive: true });
 } catch (err) {
-  console.warn('[Absensi] Warning: Could not create upload directory:', err.message);
+  console.warn('[Absensi] Warning: Could not create directories:', err.message);
 }
 
 const upload = multer({
@@ -45,14 +48,15 @@ router.post('/checkin', auth(['siswa', 'guru']), upload.single('photo'), async (
       return res.status(400).json({ success: false, message: 'Foto selfie wajib dikirim' });
     }
 
+    const lat = req.body.lat || null;
+    const lng = req.body.lng || null;
+
     const { getFaceDescriptor } = require('../faceHelper');
     const photoBuffer = fs.readFileSync(req.file.path);
     const descriptor = await getFaceDescriptor(photoBuffer, req.file.mimetype);
 
-    // Cleanup temp file
-    try { fs.unlinkSync(req.file.path); } catch (e) {}
-
     if (!descriptor) {
+      try { fs.unlinkSync(req.file.path); } catch (e) {}
       return res.status(400).json({
         success: false,
         message: 'Wajah tidak terdeteksi pada foto. Silakan pastikan pencahayaan cukup dan wajah terlihat jelas.',
@@ -77,6 +81,7 @@ router.post('/checkin', auth(['siswa', 'guru']), upload.single('photo'), async (
     }
 
     if (rows.length === 0) {
+      try { fs.unlinkSync(req.file.path); } catch (e) {}
       return res.status(400).json({
         success: false,
         message: 'Wajah Anda belum terdaftar di sistem. Silakan daftarkan wajah terlebih dahulu.',
@@ -99,14 +104,36 @@ router.post('/checkin', auth(['siswa', 'guru']), upload.single('photo'), async (
 
     const matchThreshold = 0.6; // standard threshold for face-api.js
     if (minDistance > matchThreshold) {
+      try { fs.unlinkSync(req.file.path); } catch (e) {}
       return res.status(401).json({
         success: false,
         message: `Wajah tidak cocok dengan data terdaftar (distance: ${minDistance.toFixed(3)})`,
       });
     }
 
+    // Save image permanently to storage/attendance
+    const ext = path.extname(req.file.originalname) || '.jpg';
+    const newFilename = `attendance_${req.user.role}_${siswaid || guruid}_${Date.now()}${ext}`;
+    const targetPath = path.join(attendanceDir, newFilename);
+    const publicPhotoPath = `/storage/attendance/${newFilename}`;
+    try {
+      fs.renameSync(req.file.path, targetPath);
+    } catch (e) {
+      fs.copyFileSync(req.file.path, targetPath);
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+    }
+
+    // School work hours
+    const [sekolahRows] = await pool.query(
+      `SELECT jam_masuk, jam_pulang FROM mastersekolah WHERE sekolahid = ? LIMIT 1`,
+      [req.user.sekolahid]
+    );
+    const jamMasukRule = sekolahRows.length && sekolahRows[0].jam_masuk ? sekolahRows[0].jam_masuk : '07:00:00';
+    const jamPulangRule = sekolahRows.length && sekolahRows[0].jam_pulang ? sekolahRows[0].jam_pulang : '15:00:00';
+
     // Check if already checked in today
     const today = new Date().toISOString().slice(0, 10);
+    const nowTime = new Date().toTimeString().slice(0, 8);
     const [existing] = await pool.query(
       `SELECT presensiid, jammasuk, jampulang FROM transaksipresensi
        WHERE siswaid <=> ? AND guruid <=> ? AND tanggal = ? LIMIT 1`,
@@ -119,26 +146,35 @@ router.post('/checkin', auth(['siswa', 'guru']), upload.single('photo'), async (
         return res.status(400).json({ success: false, message: 'Anda sudah check-in dan check-out hari ini' });
       }
       // Do checkout
-      const now = new Date().toTimeString().slice(0, 8);
+      const statuskeluar = nowTime < jamPulangRule ? 'lebih awal' : 'hadir';
       await pool.query(
-        `UPDATE transaksipresensi SET jampulang = ?, statuskeluar = 'hadir' WHERE presensiid = ?`,
-        [now, existing[0].presensiid]
+        `UPDATE transaksipresensi 
+         SET jampulang = ?, statuskeluar = ?, fotokeluar = ?, lokasilat_keluar = ?, lokasilng_keluar = ? 
+         WHERE presensiid = ?`,
+        [nowTime, statuskeluar, publicPhotoPath, lat, lng, existing[0].presensiid]
       );
 
-      // Parent notification for checkout if it's a student
+      // Notification to Ortu & Guru
       if (req.user.role === 'siswa') {
         try {
           const [ortuRows] = await pool.query('SELECT ortuid FROM masterortu WHERE siswaid = ?', [siswaid]);
           const ortuid = ortuRows.length ? ortuRows[0].ortuid : null;
+          const [siswaRow] = await pool.query('SELECT nama FROM mastersiswa WHERE siswaid = ?', [siswaid]);
+          const namasiswa = siswaRow[0]?.nama || 'Putra/Putri Anda';
+
           if (ortuid) {
-            const [siswaRow] = await pool.query('SELECT nama FROM mastersiswa WHERE siswaid = ?', [siswaid]);
-            const namasiswa = siswaRow[0]?.nama || 'Putra/Putri Anda';
             await pool.query(
               `INSERT INTO corenotifikasi (sekolahid, siswaid, ortuid, judul, pesan, tipe, isread, createdby)
                VALUES (?, ?, ?, ?, ?, 'presensi', 0, 'system')`,
-              [req.user.sekolahid, siswaid, ortuid, 'Presensi Check-Out', `${namasiswa} telah melakukan check-out presensi pulang pada ${now}.`]
+              [req.user.sekolahid, siswaid, ortuid, 'Presensi Check-Out', `${namasiswa} telah check-out pulang pada ${nowTime} (${statuskeluar}).`]
             );
           }
+          // Guru notif
+          await pool.query(
+            `INSERT INTO corenotifikasi (sekolahid, siswaid, judul, pesan, tipe, isread, createdby)
+             VALUES (?, ?, ?, ?, 'presensi', 0, 'system')`,
+            [req.user.sekolahid, siswaid, `Presensi Pulang: ${namasiswa}`, `${namasiswa} telah check-out pulang pada ${nowTime} (${statuskeluar}).`]
+          );
         } catch (notifErr) {
           console.error('[Notification Error] Failed to create checkout notification:', notifErr.message);
         }
@@ -146,36 +182,42 @@ router.post('/checkin', auth(['siswa', 'guru']), upload.single('photo'), async (
 
       return res.json({
         success: true,
-        message: 'Check-out berhasil',
-        data: { type: 'checkout', time: now, distance: minDistance },
+        message: `Check-out berhasil (${statuskeluar})`,
+        data: { type: 'checkout', time: nowTime, status: statuskeluar, photo: publicPhotoPath },
       });
     }
 
     // Do check-in
-    const jamMasuk = new Date().toTimeString().slice(0, 8);
-    // Determine late status (example: > 07:15 = terlambat)
-    const statusmasuk = jamMasuk > '07:15:00' ? 'terlambat' : 'hadir';
+    const statusmasuk = nowTime > jamMasukRule ? 'terlambat' : 'hadir';
 
     const [insertResult] = await pool.query(
-      `INSERT INTO transaksipresensi (sekolahid, siswaid, guruid, tanggal, jammasuk, statusmasuk, verifikasi, createdby)
-       VALUES (?, ?, ?, ?, ?, ?, 'face', ?)`,
-      [req.user.sekolahid, siswaid, guruid, today, jamMasuk, statusmasuk, req.user.username]
+      `INSERT INTO transaksipresensi 
+        (sekolahid, siswaid, guruid, tanggal, jammasuk, statusmasuk, verifikasi, fotomasuk, lokasilat, lokasilng, createdby)
+       VALUES (?, ?, ?, ?, ?, ?, 'face', ?, ?, ?, ?)`,
+      [req.user.sekolahid, siswaid, guruid, today, nowTime, statusmasuk, publicPhotoPath, lat, lng, req.user.username]
     );
 
-    // Parent notification for checkin if it's a student
+    // Notification to Ortu & Guru
     if (req.user.role === 'siswa') {
       try {
         const [ortuRows] = await pool.query('SELECT ortuid FROM masterortu WHERE siswaid = ?', [siswaid]);
         const ortuid = ortuRows.length ? ortuRows[0].ortuid : null;
+        const [siswaRow] = await pool.query('SELECT nama FROM mastersiswa WHERE siswaid = ?', [siswaid]);
+        const namasiswa = siswaRow[0]?.nama || 'Putra/Putri Anda';
+
         if (ortuid) {
-          const [siswaRow] = await pool.query('SELECT nama FROM mastersiswa WHERE siswaid = ?', [siswaid]);
-          const namasiswa = siswaRow[0]?.nama || 'Putra/Putri Anda';
           await pool.query(
             `INSERT INTO corenotifikasi (sekolahid, siswaid, ortuid, judul, pesan, tipe, isread, createdby)
              VALUES (?, ?, ?, ?, ?, 'presensi', 0, 'system')`,
-            [req.user.sekolahid, siswaid, ortuid, 'Presensi Check-In', `${namasiswa} telah melakukan check-in presensi masuk pada ${jamMasuk} dengan status ${statusmasuk}.`]
+            [req.user.sekolahid, siswaid, ortuid, 'Presensi Check-In', `${namasiswa} telah presensi masuk pada ${nowTime} (${statusmasuk}).`]
           );
         }
+        // Guru notif
+        await pool.query(
+          `INSERT INTO corenotifikasi (sekolahid, siswaid, judul, pesan, tipe, isread, createdby)
+           VALUES (?, ?, ?, ?, 'presensi', 0, 'system')`,
+          [req.user.sekolahid, siswaid, `Presensi Masuk: ${namasiswa}`, `${namasiswa} telah presensi masuk pada ${nowTime} (${statusmasuk}).`]
+        );
       } catch (notifErr) {
         console.error('[Notification Error] Failed to create checkin notification:', notifErr.message);
       }
@@ -187,9 +229,9 @@ router.post('/checkin', auth(['siswa', 'guru']), upload.single('photo'), async (
       data: {
         type: 'checkin',
         presensiid: insertResult.insertId,
-        time: jamMasuk,
+        time: nowTime,
         status: statusmasuk,
-        distance: minDistance,
+        photo: publicPhotoPath,
       },
     });
   } catch (error) {
@@ -265,7 +307,8 @@ router.get('/history', auth(), async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT t.presensiid, t.tanggal, t.jammasuk, t.jampulang, t.statusmasuk, t.statuskeluar,
-              t.keterangan, t.verifikasi,
+              t.keterangan, t.verifikasi, t.fotomasuk, t.fotokeluar,
+              t.lokasilat, t.lokasilng, t.lokasilat_keluar, t.lokasilng_keluar,
               s.nama AS namasiswa, s.kelas
        FROM transaksipresensi t
        LEFT JOIN mastersiswa s ON s.siswaid = t.siswaid
@@ -292,7 +335,8 @@ router.get('/today', auth(['admin', 'guru']), async (req, res) => {
 
     let query = `
       SELECT s.siswaid, s.nisn, s.nama, s.kelas,
-             t.presensiid, t.jammasuk, t.jampulang, t.statusmasuk, t.statuskeluar
+             t.presensiid, t.jammasuk, t.jampulang, t.statusmasuk, t.statuskeluar,
+             t.fotomasuk, t.fotokeluar
       FROM mastersiswa s
       LEFT JOIN transaksipresensi t ON t.siswaid = s.siswaid AND t.tanggal = ?
       WHERE s.sekolahid = ? AND s.status = 'A'`;

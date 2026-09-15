@@ -16,6 +16,9 @@ router.get('/', auth(), async (req, res) => {
     } else if (req.user.siswaid) {
       conditions.push('n.siswaid = ?');
       params.push(req.user.siswaid);
+    } else if (req.user.guruid) {
+      conditions.push('n.sekolahid = ?');
+      params.push(req.user.sekolahid);
     } else if (req.user.sekolahid) {
       conditions.push('n.sekolahid = ?');
       params.push(req.user.sekolahid);
