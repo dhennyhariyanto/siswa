@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../config/api_config.dart';
@@ -55,6 +56,46 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
+  /// Build image widget from base64 data URI or network URL
+  Widget _buildFoto(String foto, {double height = 150}) {
+    if (foto.startsWith('data:')) {
+      final commaIdx = foto.indexOf(',');
+      if (commaIdx < 0) return const Text('Foto rusak', style: TextStyle(color: Colors.red));
+      final b64 = foto.substring(commaIdx + 1);
+      try {
+        return Image.memory(
+          base64Decode(b64),
+          height: height,
+          fit: BoxFit.cover,
+          errorBuilder: (c, e, s) => const Text('Gagal muat foto', style: TextStyle(color: Colors.red)),
+        );
+      } catch (_) {
+        return const Text('Gagal muat foto', style: TextStyle(color: Colors.red));
+      }
+    }
+    return Image.network(
+      '${ApiConfig.baseUrl.replaceAll('/api', '')}$foto',
+      height: height,
+      fit: BoxFit.cover,
+      errorBuilder: (c, e, s) => const Text('Gagal muat foto', style: TextStyle(color: Colors.red)),
+    );
+  }
+
+  /// Build ImageProvider for CircleAvatar from base64 or URL
+  ImageProvider? _fotoProvider(String? foto) {
+    if (foto == null) return null;
+    if (foto.startsWith('data:')) {
+      final commaIdx = foto.indexOf(',');
+      if (commaIdx < 0) return null;
+      try {
+        return MemoryImage(base64Decode(foto.substring(commaIdx + 1)));
+      } catch (_) {
+        return null;
+      }
+    }
+    return NetworkImage('${ApiConfig.baseUrl.replaceAll('/api', '')}$foto');
+  }
+
   void _showDetail(Map<String, dynamic> r) {
     showDialog(
       context: context,
@@ -76,15 +117,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
                 if (fotoMasuk != null) ...[
                   const SizedBox(height: 8),
-                  Image.network(
-                    '${ApiConfig.baseUrl.replaceAll('/api', '')}$fotoMasuk',
-                    height: 150,
-                    fit: BoxFit.cover,
-                    errorBuilder: (c, e, s) => const Text(
-                      'Gagal muat foto',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                  ),
+                  _buildFoto(fotoMasuk.toString()),
                 ],
                 const SizedBox(height: 16),
                 Text(
@@ -92,15 +125,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
                 if (fotoKeluar != null) ...[
                   const SizedBox(height: 8),
-                  Image.network(
-                    '${ApiConfig.baseUrl.replaceAll('/api', '')}$fotoKeluar',
-                    height: 150,
-                    fit: BoxFit.cover,
-                    errorBuilder: (c, e, s) => const Text(
-                      'Gagal muat foto',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                  ),
+                  _buildFoto(fotoKeluar.toString()),
                 ],
               ],
             ),
@@ -145,7 +170,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   final jamPulang = r['jampulang']?.toString() ?? '-';
                   final status = r['statusmasuk']?.toString() ?? '-';
                   final namaSiswa = r['namasiswa']?.toString();
-                  final fotoMasuk = r['fotomasuk'];
+                  final fotoMasuk = r['fotomasuk']?.toString();
 
                   return Card(
                     margin: const EdgeInsets.symmetric(
@@ -158,12 +183,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         backgroundColor: _statusColor(
                           status,
                         ).withValues(alpha: 0.2),
-                        backgroundImage: fotoMasuk != null
-                            ? NetworkImage(
-                                '${ApiConfig.baseUrl.replaceAll('/api', '')}$fotoMasuk',
-                              )
-                            : null,
-                        child: fotoMasuk == null
+                        backgroundImage: _fotoProvider(fotoMasuk),
+                        child: _fotoProvider(fotoMasuk) == null
                             ? Text(
                                 status.isNotEmpty
                                     ? status[0].toUpperCase()

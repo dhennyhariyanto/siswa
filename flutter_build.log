@@ -1,0 +1,39 @@
+Running Gradle task 'assembleRelease'...                        
+
+C:\laragon\www\siswa\presensi_app\android>if "Windows_NT" == "Windows_NT" setlocal
+
+C:\laragon\www\siswa\presensi_app\android>set DEFAULT_JVM_OPTS= 
+
+C:\laragon\www\siswa\presensi_app\android>set DIRNAME=C:\laragon\www\siswa\presensi_app\android\ 
+
+C:\laragon\www\siswa\presensi_app\android>if "C:\laragon\www\siswa\presensi_app\android\" == "" set DIRNAME=. 
+
+C:\laragon\www\siswa\presensi_app\android>set APP_BASE_NAME=gradlew 
+
+C:\laragon\www\siswa\presensi_app\android>set APP_HOME=C:\laragon\www\siswa\presensi_app\android\ 
+
+C:\laragon\www\siswa\presensi_app\android>if defined JAVA_HOME goto findJavaFromJavaHome 
+
+C:\laragon\www\siswa\presensi_app\android>set JAVA_HOME=C:\Program Files\Android\Android Studio\jbr 
+
+C:\laragon\www\siswa\presensi_app\android>set JAVA_EXE=C:\Program Files\Android\Android Studio\jbr/bin/java.exe 
+
+C:\laragon\www\siswa\presensi_app\android>if exist "C:\Program Files\Android\Android Studio\jbr/bin/java.exe" goto init 
+
+C:\laragon\www\siswa\presensi_app\android>if not "Windows_NT" == "Windows_NT" goto win9xME_args 
+
+C:\laragon\www\siswa\presensi_app\android>if "@eval[2+2]" == "4" goto 4NT_args 
+
+C:\laragon\www\siswa\presensi_app\android>set CMD_LINE_ARGS= 
+
+C:\laragon\www\siswa\presensi_app\android>set _SKIP=2 
+
+C:\laragon\www\siswa\presensi_app\android>if "x-q" == "x" goto execute 
+
+C:\laragon\www\siswa\presensi_app\android>set CMD_LINE_ARGS=-q -Ptarget-platform=android-arm,android-arm64,android-x64 -Ptarget=lib\main.dart -Pbase-application-name=android.app.Application -Pdart-defines=RkxVVFRFUl9WRVJTSU9OPTMuMzguNQ==,RkxVVFRFUl9DSEFOTkVMPXN0YWJsZQ==,RkxVVFRFUl9HSVRfVVJMPWh0dHBzOi8vZ2l0aHViLmNvbS9mbHV0dGVyL2ZsdXR0ZXIuZ2l0,RkxVVFRFUl9GUkFNRVdPUktfUkVWSVNJT049ZjZmZjE1MjlmZA==,RkxVVFRFUl9FTkdJTkVfUkVWSVNJT049MTUyN2FlMGVjNQ==,RkxVVFRFUl9EQVJUX1ZFUlNJT049My4xMC40 -Pdart-obfuscation=false -Ptrack-widget-creation=true -Ptree-shake-icons=true assembleRelease 
+
+C:\laragon\www\siswa\presensi_app\android>goto execute 
+
+C:\laragon\www\siswa\presensi_app\android>set CLASSPATH=C:\laragon\www\siswa\presensi_app\android\\gradle\wrapper\gradle-wrapper.jar 
+
+C:\laragon\www\siswa\presensi_app\android>"C:\Program Files\Android\Android Studio\jbr/bin/java.exe"    "-Dorg.gradle.appname=gradlew" -classpath "C:\laragon\www\siswa\presensi_app\android\\gradle\wrapper\gradle-wrapper.jar" org.gradle.wrapper.GradleWrapperMain -q -Ptarget-platform=android-arm,android-arm64,android-x64 -Ptarget=lib\main.dart -Pbase-application-name=android.app.Application -Pdart-defines=RkxVVFRFUl9WRVJTSU9OPTMuMzguNQ==,RkxVVFRFUl9DSEFOTkVMPXN0YWJsZQ==,RkxVVFRFUl9HSVRfVVJMPWh0dHBzOi8vZ2l0aHViLmNvbS9mbHV0dGVyL2ZsdXR0ZXIuZ2l0,RkxVVFRFUl9GUkFNRVdPUktfUkVWSVNJT049ZjZmZjE1MjlmZA==,RkxVVFRFUl9FTkdJTkVfUkVWSVNJT049MTUyN2FlMGVjNQ==,RkxVVFRFUl9EQVJUX1ZFUlNJT049My4xMC40 -Pdart-obfuscation=false -Ptrack-widget-creation=true -Ptree-shake-icons=true assembleRelease 

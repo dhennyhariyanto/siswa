@@ -63,7 +63,7 @@ router.post('/', auth(['admin', 'guru']), async (req, res) => {
 
     const [result] = await pool.query(
       `INSERT INTO corenotifikasi (sekolahid, siswaid, ortuid, judul, pesan, tipe, isread, createdby)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, false, ?)`,
       [req.user.sekolahid, siswaid || null, ortuid || null, judul, pesan, tipe || 'info', req.user.username]
     );
 

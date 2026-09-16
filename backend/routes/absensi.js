@@ -111,17 +111,13 @@ router.post('/checkin', auth(['siswa', 'guru']), upload.single('photo'), async (
       });
     }
 
-    // Save image permanently to storage/attendance
+    // Save image as base64 data URI (Vercel serverless has ephemeral /tmp filesystem)
+    const photoBuffer = fs.readFileSync(req.file.path);
     const ext = path.extname(req.file.originalname) || '.jpg';
-    const newFilename = `attendance_${req.user.role}_${siswaid || guruid}_${Date.now()}${ext}`;
-    const targetPath = path.join(attendanceDir, newFilename);
-    const publicPhotoPath = `/storage/attendance/${newFilename}`;
-    try {
-      fs.renameSync(req.file.path, targetPath);
-    } catch (e) {
-      fs.copyFileSync(req.file.path, targetPath);
-      try { fs.unlinkSync(req.file.path); } catch (_) {}
-    }
+    const mimeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
+    const mime = mimeMap[ext.toLowerCase()] || 'image/jpeg';
+    const publicPhotoPath = `data:${mime};base64,${photoBuffer.toString('base64')}`;
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
 
     // School work hours
     const [sekolahRows] = await pool.query(
@@ -132,8 +128,10 @@ router.post('/checkin', auth(['siswa', 'guru']), upload.single('photo'), async (
     const jamPulangRule = sekolahRows.length && sekolahRows[0].jam_pulang ? sekolahRows[0].jam_pulang : '15:00:00';
 
     // Check if already checked in today
-    const today = new Date().toISOString().slice(0, 10);
-    const nowTime = new Date().toTimeString().slice(0, 8);
+    // Use Asia/Jakarta (WIB, UTC+7) to avoid server UTC mismatch
+    const nowWIB = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    const today = nowWIB.toISOString().slice(0, 10);
+    const nowTime = nowWIB.toISOString().slice(11, 19);
     const [existing] = await pool.query(
       `SELECT presensiid, jammasuk, jampulang FROM transaksipresensi
        WHERE siswaid <=> ? AND guruid <=> ? AND tanggal = ? LIMIT 1`,
@@ -165,14 +163,14 @@ router.post('/checkin', auth(['siswa', 'guru']), upload.single('photo'), async (
           if (ortuid) {
             await pool.query(
               `INSERT INTO corenotifikasi (sekolahid, siswaid, ortuid, judul, pesan, tipe, isread, createdby)
-               VALUES (?, ?, ?, ?, ?, 'presensi', 0, 'system')`,
+               VALUES (?, ?, ?, ?, ?, 'presensi', false, 'system')`,
               [req.user.sekolahid, siswaid, ortuid, 'Presensi Check-Out', `${namasiswa} telah check-out pulang pada ${nowTime} (${statuskeluar}).`]
             );
           }
           // Guru notif
           await pool.query(
             `INSERT INTO corenotifikasi (sekolahid, siswaid, judul, pesan, tipe, isread, createdby)
-             VALUES (?, ?, ?, ?, 'presensi', 0, 'system')`,
+             VALUES (?, ?, ?, ?, 'presensi', false, 'system')`,
             [req.user.sekolahid, siswaid, `Presensi Pulang: ${namasiswa}`, `${namasiswa} telah check-out pulang pada ${nowTime} (${statuskeluar}).`]
           );
         } catch (notifErr) {
@@ -208,14 +206,14 @@ router.post('/checkin', auth(['siswa', 'guru']), upload.single('photo'), async (
         if (ortuid) {
           await pool.query(
             `INSERT INTO corenotifikasi (sekolahid, siswaid, ortuid, judul, pesan, tipe, isread, createdby)
-             VALUES (?, ?, ?, ?, ?, 'presensi', 0, 'system')`,
+             VALUES (?, ?, ?, ?, ?, 'presensi', false, 'system')`,
             [req.user.sekolahid, siswaid, ortuid, 'Presensi Check-In', `${namasiswa} telah presensi masuk pada ${nowTime} (${statusmasuk}).`]
           );
         }
         // Guru notif
         await pool.query(
           `INSERT INTO corenotifikasi (sekolahid, siswaid, judul, pesan, tipe, isread, createdby)
-           VALUES (?, ?, ?, ?, 'presensi', 0, 'system')`,
+           VALUES (?, ?, ?, ?, 'presensi', false, 'system')`,
           [req.user.sekolahid, siswaid, `Presensi Masuk: ${namasiswa}`, `${namasiswa} telah presensi masuk pada ${nowTime} (${statusmasuk}).`]
         );
       } catch (notifErr) {
@@ -257,7 +255,7 @@ router.post('/manual', auth(['admin', 'guru']), async (req, res) => {
       return res.status(400).json({ success: false, message: 'Presensi sudah tercatat untuk tanggal ini' });
     }
 
-    const jamMasuk = new Date().toTimeString().slice(0, 8);
+    const jamMasuk = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(11, 19); // WIB
     const [result] = await pool.query(
       `INSERT INTO transaksipresensi (sekolahid, siswaid, tanggal, jammasuk, statusmasuk, keterangan, verifikasi, createdby)
        VALUES (?, ?, ?, ?, ?, ?, 'manual', ?)`,
@@ -329,7 +327,7 @@ router.get('/history', auth(), async (req, res) => {
 // ============================================
 router.get('/today', auth(['admin', 'guru']), async (req, res) => {
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const todayWIB = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const sekolahid = req.query.sekolahid || req.user.sekolahid;
     const kelas = req.query.kelas;
 
@@ -340,7 +338,7 @@ router.get('/today', auth(['admin', 'guru']), async (req, res) => {
       FROM mastersiswa s
       LEFT JOIN transaksipresensi t ON t.siswaid = s.siswaid AND t.tanggal = ?
       WHERE s.sekolahid = ? AND s.status = 'A'`;
-    const params = [today, sekolahid];
+    const params = [todayWIB, sekolahid];
 
     if (kelas) {
       query += ' AND s.kelas = ?';
